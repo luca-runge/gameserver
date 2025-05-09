@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from fastapi import Request
 
 class Game(ABC):
 
@@ -6,6 +7,8 @@ class Game(ABC):
 
         self.name = name
         self.router = router
+
+        # Routen hinzufügen
         self.register_routes()
 
     @abstractmethod
@@ -13,5 +16,14 @@ class Game(ABC):
         pass
 
     @abstractmethod
-    def register_routes(self):
+    def register_specific_routes(self):
         pass
+
+    def register_routes(self):
+
+        self.register_specific_routes()
+
+        @self.router.get("/save")
+        async def get_info(request: Request):
+            print("Game speichert")
+

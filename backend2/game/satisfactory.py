@@ -1,4 +1,4 @@
-from backend2.game.game_class import Game
+from backend2.game.game import Game
 from fastapi import APIRouter, Request
 
 class Satisfactory(Game):
@@ -10,7 +10,7 @@ class Satisfactory(Game):
     def save(self):
         print("Spiel speichert")
 
-    def register_routes(self):
+    def register_specific_routes(self):
         
         @self.router.get("/save")
         async def get_info(request: Request):
