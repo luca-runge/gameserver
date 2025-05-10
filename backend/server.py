@@ -116,8 +116,6 @@ class Server:
             self._running = False
             self._thread = None
 
-    
-
     def get_active_connections(self, ports):
         connections = []
         

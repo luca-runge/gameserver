@@ -3,9 +3,9 @@ from fastapi import APIRouter, Request
 
 class Satisfactory(Game):
 
-    def __init__(self):
+    def __init__(self, server):
 
-        super().__init__(f"Satisfactory", APIRouter(prefix="/api/satisfactory"))
+        super().__init__(name=f"Satisfactory", router=APIRouter(prefix="/api/satisfactory"), server=server)
 
     def save(self):
         print("Spiel speichert")
