@@ -15,7 +15,7 @@ class Server:
         # CheckUse [vorherige Prüfung] -> Muss vorm Stoppen 2 mal in Folge nicht in Verwendung sein
         self.in_use = True
 
-        # Lock für den Zustand
+        # Lock für Server-Zustand
         self._lock = asyncio.Lock()
 
         # Zustand
@@ -30,8 +30,10 @@ class Server:
         # Alle auf dem Server registrierten Spiele
         self.games = []
 
-        # Router für API
+        # API-Anfrgen
         self.router = APIRouter(prefix="/api/server")
+        self.register_routes()
+
 
     # Server starten
     def start(self):
@@ -103,13 +105,13 @@ class Server:
                 # Diese und letzte Prüfung negativ (2 in Folge negativ)
                 if not in_use and not self.in_use:
 
-                    # Server beenden
-                    async with self._lock:
-                        self._state = ServerState.STOPPING
-                        self.stop()
+                    self._state = ServerState.STOPPING
+                    self.stop()
 
                 # Ergebnis für die nächste Runde (2 in Folge negativ)
                 self.in_use = in_use
+
+                print(in_use)
 
             except Exception as e:
                 
