@@ -1,169 +1,200 @@
 from datetime import datetime
-import threading
+import asyncio
 import time
+from abc import ABC, abstractmethod
+from backend2.database import getAsyncDatabaseConnection
 
-from backend2.database import getDatabaseConnection
+class Runtime(ABC):
 
-class Runtime():
+    def __init__(self, interval):
 
-    # Liste aller laufenden Games
-    active = []
-
-    # Leerlaufzeitmessung
-    idle = None
-
-    def __init__(self, interval, project_nr=0, idle=False):
-
-        # Startzeit der Messung (0 bedeutet noch nicht gemessen)
+        # Startzeit der Messung (0: noch nicht gemessen)
         self.start_time = 0
 
-        # Ist es eine Leerlaufmessung?
-        self.idle = idle
-
-        # Projektnummer, um die Laufzeit anzupassen
-        self.project_nr = project_nr
-        
         # Intervall
         self._running = False
-        self._thread = None
         self.interval = interval
 
-        # Idle Objekt als Leerlaufobjekt der Klasse setzen
-        if idle:
+    # Zeit in Datenbank anpassen
+    @abstractmethod
+    async def _database_update(self, seconds):
+        pass
 
-            print(idle)
-            self.start_interval()
+    # Laufzeitmessung starten
+    def start(self):
 
-    # Startet die Laufzeitmessung im Intervall
-    def _run(self):
+        # Intervall läuft nicht
+        if not self._running:
+
+            # Task ausführen
+            self._running = True
+            asyncio.create_task(self.update_interval())
+
+    # Laufzeitmessung beenden
+    async def stop(self):
+
+        # Intervall läuft
+        if self._running:
+
+            # Intervall beenden
+            self._running = False
+
+            # Update
+            await self.update()
+
+            # Nicht aktive Messung
+            self.start_time = 0
+
+    # Intervall
+    async def update_interval(self):
 
         # Solange das Auto-Backup eingeschaltet ist
         while self._running:
 
             # Backup erstellen
-            self.update_time()
+            await self.update()
 
             # Intervall abwarten
-            time.sleep(self.interval)
+            await asyncio.sleep(self.interval)
 
-    # Schreibt die Laufzeit in die Datenbank
-    def _update_db(self, diff_time):
-
-        pool = getDatabaseConnection()
-
-        conn = pool.get_connection()
-
-        cursor = conn.cursor()
-
-        try:
-
-            if self.idle:
-    
-                # Serverlaufzeit Update
-                print(f"Server-Leerlaufzeit wird um {diff_time} erhöht.")
-                cursor.execute('UPDATE idle SET Laufzeit = Laufzeit + %s WHERE device = %s', (diff_time, "server"))
-            
-            else:
-
-                print(f"Projekt-Laufzeit {self.project_nr} wird um {diff_time} erhöht.")
-                cursor.execute('UPDATE projekte SET Laufzeit = Laufzeit + %s WHERE ProjektID = %s', (diff_time, self.project_nr))
-
-            conn.commit()
-
-        except Exception as e:
-
-            print(f"Fehler beim aktualisieren von Laufzeiten: {e}")
-            conn.rollback()
-
-        finally:
-
-            # Cursor und Verbindung schließen
-            cursor.close()
-
-            pool.return_connection(conn)
-
-    def get_db(self):
-
-        print(f"Das Projekt {self.project_nr} läuft seit xx:xxh")
-
-    # Laufzeit-Messungs Intervall starten
-    def start_interval(self):
-
-    
-        # Nur, wenn noch kein Backup-Intervall läuft
-        if not self._running:
-
-            print(f"Starte Intervall {self.project_nr}; Idle: {self.idle}; Active: {Runtime.active}")
-
-            if not self.idle:
-
-                Runtime.idle.stop_interval()
-                Runtime.active.append(self)
-
-            # Thread starten, welcher _run ausführt
-            print("Starte Laufzeit-Intervall")
-            self._running = True
-            self._thread = threading.Thread(target=self._run, daemon=True)
-            self._thread.start()
-
-
-    # Laufzeit-Messungs Intervall beenden
-    def stop_interval(self):
-
-        print(f"Stoppe Laufzeit Intervall {self.project_nr}; Idle: {self.idle}; Active: {Runtime.active}")
-
-        if self._running:
-
-            if not self.idle:
-
-                print(self.idle)
-
-                print(self.project_nr)
-                Runtime.active.remove(self)
-
-                if len(Runtime.active) == 0:
-
-                    Runtime.idle.start_interval()
-
-            # Thread beenden
-            self._running = False
-            self._thread = None
-
-            self.update_time()
-
-            self.start_time = 0
-
-    def update_time(self):
+    # Zeit anpassen
+    async def update(self):
 
         # Aktuelle Zeit
         endtime = datetime.now()
 
-        diff_time_seconds = 0
+        # Noch nicht gemessen?
         if self.start_time != 0:
+
+
+            diff_time_seconds = 0
 
             # Differenz zur letzten Messung
             diff_time =  endtime - self.start_time
             diff_time_seconds = diff_time.total_seconds()
 
-        # Differenz in die Datenbank schreiben
-        self._update_db(diff_time_seconds)
+            # Differenz in die Datenbank schreiben
+            await self._database_update(diff_time_seconds)
 
         # Alten Enzeitpunkt zum neuen Startzeitpunkt für die nächste Messung machen
         self.start_time = endtime
 
-    def __del__(self):
+class IdleRuntime(Runtime):
 
-        if self._running:
-            self.stop_interval()
+    def __init__(self, interval):
 
-    def set_idle(time):
+        # Runtime
+        super().__init__(interval)
 
-        Runtime.idle = Runtime(time, idle=True)
+        # Aktive Projekt-Runtimes
+        self.active = []
 
-    def get_idle():
+        # Laufzeitmessung im Leerlauf starten
+        self.start()
 
-        return Runtime.idle
+    # Laufzeit eines Projektes stoppen
+    async def deactivate(self, runtime):
+
+        # Nur Objekte der Klasse ProjectRuntime -> Nur Laufzeit aktiver Projekte
+        if isinstance(runtime, ProjectRuntime):
+
+            # Wenn Laufzeit des Projekts zurzeit aktiv ist
+            if runtime in self.active:
+
+                # Runtime stoppen
+                await runtime.stop()
+                self.active.remove(runtime)
+
+                # Keine aktive Projekt-Runtime aktiv: Leerlaufmessung (Idle) startet
+                if(len(self.active) == 0):
+                    self.start()
+
+        else:
+            raise TypeError("Kein Game!")
     
+    # Laufzeit eines Projektes starten
+    async def activate(self, runtime):
+            
+        # Nur Objekte der Klasse ProjectRuntime -> Nur Laufzeit aktiver Projekte
+        if isinstance(runtime, ProjectRuntime):
+
+            # Wenn Laufzeit des Projekts zurzeit inaktiv ist
+            if runtime not in self.active:
+
+                # Zurzeit in Leerlaufmessung (Idle): Leerlaufmessung wird beendet
+                if(len(self.active) == 0):
+                    await self.stop()
+
+                # Runtime starten
+                self.active.append(runtime)
+                runtime.start()
+
+        else:
+            raise TypeError("Kein Game!")
+        
+    # Schreibt die Laufzeit in die Datenbank
+    async def _database_update(self, seconds):
+
+        # conn = await getAsyncDatabaseConnection()
+
+        try:
+
+            print(f"Server-Leerlaufzeit wird um {seconds} erhöht.")
+            # await conn.execute('UPDATE idle SET Laufzeit = Laufzeit + $1 WHERE device = $2', seconds, "server")
+
+        except Exception as e:
+
+            print(f"Fehler beim Aktualisieren von Server-Leerlaufzeit: {e}")
+
+        finally:
+
+            # Cursor und Verbindung schließen
+            # await conn.close()
+            pass
+    
+class ProjectRuntime(Runtime):
+
+    def __init__(self, interval, idle, project_nr):
+
+        # Runtime
+        super().__init__(interval)
+
+        # Projektnummer, um die Laufzeit anzupassen
+        self.project_nr = project_nr
+
+        # Leerlauf-Messung
+        self.idle = idle
+
+    async def start_runtime(self):
+
+        # Starten der Projekt-Laufzeitmessung
+        await self.idle.activate(self)
+
+    async def stop_runtime(self):
+
+        # Stoppen der Projekt-Laufzeitmessung
+        await self.idle.deactivate(self)
+
+    # Schreibt die Laufzeit in die Datenbank
+    async def _database_update(self, seconds):
+
+        # conn = await getAsyncDatabaseConnection()
+
+        try:
+
+            print(f"Projekt-Laufzeit {self.project_nr} wird um {seconds} erhöht.")
+            # await conn.execute('UPDATE projekte SET Laufzeit = Laufzeit + $1 WHERE ProjektID = $2', seconds, self.project_nr)
+
+        except Exception as e:
+
+            print(f"Fehler beim Aktualisieren von Projekt-Laufzeit: {e}")
+
+        finally:
+
+            # Cursor und Verbindung schließen
+            # await conn.close()
+            pass
+
 
     
 

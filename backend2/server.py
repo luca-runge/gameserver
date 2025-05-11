@@ -1,4 +1,4 @@
-#from backend2.runtime import Runtime
+from backend2.runtime import IdleRuntime
 import asyncio
 from backend2.state import ServerState
 import time
@@ -30,6 +30,9 @@ class Server:
         # Alle auf dem Server registrierten Spiele
         self.games = []
 
+        # Runtime
+        self.runtime = IdleRuntime(10)
+
         # API-Anfrgen
         self.router = APIRouter(prefix="/api/server")
         self.register_routes()
@@ -38,14 +41,15 @@ class Server:
     # Server starten
     def start(self):
 
-        #Runtime.set_idle(300)
         self.start_checkUse()
 
     # Server beenden
-    def stop(self):
+    async def stop(self):
 
         self._state = ServerState.STOPPING
-        #Runtime.idle.stop_interval()
+        
+        await self.runtime.stop()
+
         self.stop_checkUse()
         print(f"Der Hardwareserver stoppt in 20s")
 
@@ -106,12 +110,10 @@ class Server:
                 if not in_use and not self.in_use:
 
                     self._state = ServerState.STOPPING
-                    self.stop()
+                    await self.stop()
 
                 # Ergebnis für die nächste Runde (2 in Folge negativ)
                 self.in_use = in_use
-
-                print(in_use)
 
             except Exception as e:
                 

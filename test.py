@@ -3,6 +3,7 @@ import uvicorn
 from backend2.game.satisfactory import Satisfactory
 from backend2.server import Server
 from backend2.middleware import CheckAPIKey
+from backend2.runtime import IdleRuntime
 
 if __name__ == "test":
 
@@ -10,7 +11,7 @@ if __name__ == "test":
     API_KEYS = ["my-secret-key", "another-key"]
 
     # Server
-    server = Server(10)
+    server = Server(100)
 
     # Spiele
     satisfactory = Satisfactory(server)
@@ -25,7 +26,7 @@ if __name__ == "test":
     app.include_router(server.router)
     app.include_router(satisfactory.router)
 
-    app.add_middleware(CheckAPIKey, valid_keys=API_KEYS)
+    # app.add_middleware(CheckAPIKey, valid_keys=API_KEYS)
     
 # Webserver starten
 if __name__ == "__main__":
