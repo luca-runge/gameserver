@@ -12,7 +12,7 @@ class Satisfactory(Game):
 
     def register_specific_routes(self):
         
-        @self.router.get("/save")
+        @self.router.get("/save2")
         async def get_info(request: Request):
             self.save()
 
