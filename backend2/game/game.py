@@ -5,6 +5,14 @@ from backend2.runtime import ProjectRuntime
 import asyncio
 from backend2.process import Process
 
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
+from io import BytesIO
+import zipstream
+import os
+
 class Game(ABC):
 
     def __init__(self, name, router, server):
@@ -72,6 +80,59 @@ class Game(ABC):
                     await self.process.async_StartDetached()
                     self.process.findChildProcesses()
                     print("gestartet")
+
+        def zip_folder_stream(folder_path: Path):
+
+            buffer = BytesIO()
+
+            with ZipFile(buffer, "w", ZIP_DEFLATED) as zip_file:
+
+                for root, dirs, files in os.walk(folder_path):
+                    for file in files:
+                        file_path = Path(root) / file
+                        arcname = file_path.relative_to(folder_path)
+                        zip_file.write(file_path, arcname)
+
+                buffer.seek(0)
+                yield from buffer
+                buffer.close()
+
+        @self.router.get("/download")
+        async def download_zip(request: Request):
+
+            print("Download angefordert")
+
+            folder_to_zip = '/home/luca/gameserver/test_zip'
+            filename = "download.zip"
+
+            response = StreamingResponse(
+                zip_folder_stream(folder_to_zip),
+                media_type="application/x-zip-compressed"
+            )
+            response.headers["Content-Disposition"] = f"attachment; filename={filename}"
+            return response
+        
+        @self.router.get("/download2")
+        async def download_zip(request: Request):
+
+            print("Download2 angefordert")
+            folder_to_zip = Path('/home/luca/gameserver/test_zip')
+            zip_filename = "download.zip"
+
+            z = zipstream.ZipFile(mode="w", compression=zipstream.ZIP_DEFLATED)
+
+            for path in folder_to_zip.rglob("*"):
+                if path.is_file():
+                    z.write(path, arcname=path.relative_to(folder_to_zip))
+
+            return StreamingResponse(
+                z,
+                media_type='application/zip',
+                headers={
+                    "Content-Disposition": f"attachment; filename={zip_filename}"
+                }
+            )
+
 
 
 
