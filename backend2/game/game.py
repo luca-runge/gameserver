@@ -21,6 +21,14 @@ class Game(ABC):
         self.router = router
         self.server = server
 
+        # Path-Mapping
+        self.config_path_mapping = {}
+        self.savegame_path_mapping = {}
+
+        # Pfade
+        self.config_path = ""
+        self.savegame_path = ""
+
         self.process = Process(f"python3 test_process.py", "python3", "test_process.py")
         self.runtime = ProjectRuntime(15, server.runtime, 1)
 
@@ -29,6 +37,18 @@ class Game(ABC):
 
         # Routen hinzufügen
         self.register_routes()
+
+    def getSavegamePathMapping(self):
+        return self.savegame_path_mapping
+    
+    def getConfigPathMapping(self):
+        return self.config_path_mapping
+    
+    def getSavegamePath(self):
+        return self.savegame_path
+    
+    def getConfigPath(self):
+        return self.config_path
 
     @abstractmethod
     def save(self):
@@ -67,8 +87,6 @@ class Game(ABC):
                     await self.runtime.stop_runtime()
                     print("gestoppt")
 
-
-
         @self.router.get("/start")
         async def get_info(request: Request):
             async with self._state_lock:
@@ -80,37 +98,6 @@ class Game(ABC):
                     await self.process.async_StartDetached()
                     self.process.findChildProcesses()
                     print("gestartet")
-
-        def zip_folder_stream(folder_path: Path):
-
-            buffer = BytesIO()
-
-            with ZipFile(buffer, "w", ZIP_DEFLATED) as zip_file:
-
-                for root, dirs, files in os.walk(folder_path):
-                    for file in files:
-                        file_path = Path(root) / file
-                        arcname = file_path.relative_to(folder_path)
-                        zip_file.write(file_path, arcname)
-
-                buffer.seek(0)
-                yield from buffer
-                buffer.close()
-
-        @self.router.get("/download")
-        async def download_zip(request: Request):
-
-            print("Download angefordert")
-
-            folder_to_zip = '/home/luca/gameserver/test_zip'
-            filename = "download.zip"
-
-            response = StreamingResponse(
-                zip_folder_stream(folder_to_zip),
-                media_type="application/x-zip-compressed"
-            )
-            response.headers["Content-Disposition"] = f"attachment; filename={filename}"
-            return response
         
         @self.router.get("/download2")
         async def download_zip(request: Request):
